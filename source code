@@ -1,0 +1,89 @@
+from flask import Flask, render_template_string, request, redirect
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///supply_chain.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+class Product(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    stock = db.Column(db.Integer, default=0)
+
+class Supplier(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    contact = db.Column(db.String(100))
+
+class Order(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
+    quantity = db.Column(db.Integer)
+    product = db.relationship('Product')
+
+with app.app_context():
+    db.create_all()
+
+template = '''
+<!DOCTYPE html>
+<html>
+<head><title>Supply Chain Management</title></head>
+<body>
+    <h1>Supply Chain Management</h1>
+    <h2>Products</h2>
+    <form method="post" action="/add_product">
+        Name: <input type="text" name="name">
+        Stock: <input type="number" name="stock">
+        <input type="submit" value="Add Product">
+    </form>
+    <ul>{% for p in products %}<li>{{ p.name }} - Stock: {{ p.stock }}</li>{% endfor %}</ul>
+    <h2>Suppliers</h2>
+    <form method="post" action="/add_supplier">
+        Name: <input type="text" name="name">
+        Contact: <input type="text" name="contact">
+        <input type="submit" value="Add Supplier">
+    </form>
+    <ul>{% for s in suppliers %}<li>{{ s.name }} - Contact: {{ s.contact }}</li>{% endfor %}</ul>
+    <h2>Orders</h2>
+    <form method="post" action="/add_order">
+        Product ID: <input type="number" name="product_id">
+        Quantity: <input type="number" name="quantity">
+        <input type="submit" value="Place Order">
+    </form>
+    <ul>{% for o in orders %}<li>Product: {{ o.product.name }} - Quantity: {{ o.quantity }}</li>{% endfor %}</ul>
+</body>
+</html>
+'''
+
+@app.route('/')
+def index():
+    return render_template_string(template,
+                                  products=Product.query.all(),
+                                  suppliers=Supplier.query.all(),
+                                  orders=Order.query.all())
+
+@app.route('/add_product', methods=['POST'])
+def add_product():
+    db.session.add(Product(name=request.form['name'], stock=int(request.form['stock'])))
+    db.session.commit()
+    return redirect('/')
+
+@app.route('/add_supplier', methods=['POST'])
+def add_supplier():
+    db.session.add(Supplier(name=request.form['name'], contact=request.form['contact']))
+    db.session.commit()
+    return redirect('/')
+
+@app.route('/add_order', methods=['POST'])
+def add_order():
+    pid, qty = int(request.form['product_id']), int(request.form['quantity'])
+    product = Product.query.get(pid)
+    if product and product.stock >= qty:
+        product.stock -= qty
+        db.session.add(Order(product_id=pid, quantity=qty))
+        db.session.commit()
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(debug=True)
